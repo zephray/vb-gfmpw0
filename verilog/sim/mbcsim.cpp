@@ -35,9 +35,6 @@ MBCSIM::MBCSIM(void) {
     mbc_mode = 0; // Banking mode for MBC1
     rom_bank = 1;
     ram_bank = 0;
-    last_wr = 0;
-    last_rd = 0;
-    last_data = 0;
 }
 
 MBCSIM::~MBCSIM(void) {
@@ -123,48 +120,48 @@ void MBCSIM::load(const char *fname) {
 }
 
 void MBCSIM::apply(const uint8_t wr_data, const uint16_t address, 
-    const uint8_t wr_enable, const uint8_t rd_enable, uint8_t &rd_data) {
+    const uint8_t wr, const uint8_t rd, uint8_t &rd_data) {
 
     // Address within ROM window or RAM window
     if ((address <= 0x8000) || ((address >= 0xa000) && (address < 0xc000))) {
-        if (last_wr && !wr_enable) {
+        if (wr) {
             if (address >= 0xa000) {
                 // Write to RAM
                 if (ram_enable == 0x0a) {
                     if ((mbc_type == MBC1) && (mbc_mode == 0)) {
-                        ram[address - 0xa000] = last_data;
+                        ram[address - 0xa000] = wr_data;
                     }
                     else {
-                        ram[address - 0xa000 + ram_bank * 0x2000] = last_data;
+                        ram[address - 0xa000 + ram_bank * 0x2000] = wr_data;
                     }
                 }
             }
             else if (address < 0x2000) {
                 // RAM Enable (MBC1/3/5)
-                ram_enable = last_data;
+                ram_enable = wr_data;
             }
             else if (address < 0x4000) {
                 // ROM Bank (MBC1/3/5)
                 if (mbc_type == MBC1) {
                     rom_bank &= ~0x1f;
-                    rom_bank = (unsigned int)last_data & 0x1f;
-                    if (last_data == 0)
+                    rom_bank = (unsigned int)wr_data & 0x1f;
+                    if (wr_data == 0)
                         rom_bank |= 0x01;
                 }
                 else if (mbc_type == MBC3) {
                     rom_bank &= ~0x7f;
-                    rom_bank = (unsigned int)last_data & 0x7f;
-                    if (last_data == 0)
+                    rom_bank = (unsigned int)wr_data & 0x7f;
+                    if (wr_data == 0)
                         rom_bank |= 0x01;
                 }
                 else if (mbc_type == MBC5) {
                     if (address < 0x3000) {
                         rom_bank &= ~0xff;
-                        rom_bank |= (unsigned int)last_data & 0xff;
+                        rom_bank |= (unsigned int)wr_data & 0xff;
                     }
                     else {
                         rom_bank &= ~0x100;
-                        rom_bank |= ((unsigned int)last_data & 0x01) << 8;
+                        rom_bank |= ((unsigned int)wr_data & 0x01) << 8;
                     }
                 }
                 //printf("[MBC] Rom bank %d (%04x=%02x)\n", rom_bank, address, last_data);
@@ -173,20 +170,20 @@ void MBCSIM::apply(const uint8_t wr_data, const uint16_t address,
                 if ((mbc_type == MBC1) && (mbc_mode == 0)) {
                     // High ROM Bank
                     rom_bank &= ~0xe0;
-                    rom_bank |= ((unsigned int)last_data & 0x03) << 5;
+                    rom_bank |= ((unsigned int)wr_data & 0x03) << 5;
                     //printf("[MBC] Rom bank %d (%04x=%02x)\n", rom_bank, address, last_data);
                 }
                 else {
                     // RAM Bank
-                    ram_bank = last_data;
+                    ram_bank = wr_data;
                     //printf("[MBC] Ram bank %d (%04x=%02x)\n", ram_bank, address, last_data);
                 }
             }
             else if (address < 0x8000) {
-                mbc_mode = last_data;
+                mbc_mode = wr_data;
             }
         } 
-        else if (!last_rd && rd_enable) {
+        else if (rd) {
             if (address < 0x4000) {
                 // LoROM
                 rd_data = rom[address];
@@ -206,9 +203,6 @@ void MBCSIM::apply(const uint8_t wr_data, const uint16_t address,
             }
         }
     }
-    last_rd = rd_enable;
-    last_wr = wr_enable;
-    last_data = wr_data;
 }
 
 

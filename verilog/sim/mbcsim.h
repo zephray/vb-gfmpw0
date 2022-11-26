@@ -32,8 +32,8 @@ public:
     MBCSIM(void);
     ~MBCSIM(void);
     void load(const char *fname);
-    void apply(const uint8_t wr_data, const uint16_t address, const uint8_t wr_enable,
-        const uint8_t rd_enable, uint8_t &rd_data);
+    void apply(const uint8_t wr_data, const uint16_t address, const uint8_t wr,
+        const uint8_t rd, uint8_t &rd_data);
 private:
     typedef enum {
         MBCNONE,
@@ -46,9 +46,6 @@ private:
 
     uint8_t *rom;
     uint8_t *ram;
-    uint8_t last_wr;
-    uint8_t last_rd;
-    uint8_t last_data;
     MBCTYPE mbc_type;
     char ram_enable;
     char mbc_mode;
