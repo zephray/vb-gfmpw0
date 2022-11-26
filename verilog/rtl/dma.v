@@ -94,16 +94,11 @@ module dma(
                 count <= 8'd0;
             end
             DMA_DELAY: begin
-                if (ct == 2'b11) begin
-                    state <= DMA_TRANSFER_READ_ADDR;
+                if (ct == 2'b10) begin
+                    state <= DMA_TRANSFER_WRITE_WAIT;
                 end
             end
             DMA_TRANSFER_READ_ADDR: begin
-                dma_wr <= 1'b0;
-                cpu_mem_disable <= 1'b1;
-                // Load the temp register with data from memory
-                dma_a <= {dma_start_addr, count}; // Output read address
-                dma_rd <= 1'b1;
                 if (mmio_wr) begin // Allow re-triggering
                     state <= DMA_DELAY;
                     count <= 8'd0;
@@ -122,6 +117,7 @@ module dma(
                 // Write the temp register to memory
                 dma_a <= {8'hfe, count}; // Output write address
                 dma_wr <= 1'b1;
+                count <= count + 8'd1;
                 if (mmio_wr) begin // Allow re-triggering
                     state <= DMA_DELAY;
                     count <= 8'd0;
@@ -138,11 +134,17 @@ module dma(
                 else
                 if (count == 8'h9f) begin
                     state <= DMA_IDLE;
+                    cpu_mem_disable <= 1'b0;
                     count <= 8'd0;
                 end
                 else begin
                     state <= DMA_TRANSFER_READ_ADDR;
-                    count <= count + 8'd1;
+                    // Output address
+                    dma_wr <= 1'b0;
+                    cpu_mem_disable <= 1'b1;
+                    // Load the temp register with data from memory
+                    dma_a <= {dma_start_addr, count}; // Output read address
+                    dma_rd <= 1'b1;
                 end
             end
             default: begin

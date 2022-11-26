@@ -394,6 +394,10 @@ module boy(
             cpu_din = brom_dout;
         end 
         // -- These are shared between CPU and DMA --
+        else if (cpu_a >= 16'hfe00 && cpu_a <= 16'hfe9f) begin // OAM
+            oam_cpu_wr = cpu_wr;
+            cpu_din = (dma_occupy_bus) ? (8'hff) : (oam_dout);
+        end
         else if (cpu_a <= 16'hfdff) begin // External/ Work RAM/ Video RAM
             ext_cpu_wr = cpu_wr;
             cpu_din = (dma_occupy_bus) ? (8'hff) : (din);
