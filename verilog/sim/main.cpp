@@ -296,6 +296,43 @@ int main(int argc, char *argv[]) {
                     // Break out of the loop on quit
                     running = false;
                 }
+                else if ((event.type == SDL_KEYDOWN) || (event.type == SDL_KEYUP)) {
+                    uint8_t keycode = 0;
+                    switch (event.key.keysym.sym){
+                        case SDLK_DOWN:
+                            keycode = 0x80;
+                            break;
+                        case SDLK_UP:
+                            keycode = 0x40;
+                            break;
+                        case SDLK_LEFT:
+                            keycode = 0x20;
+                            break;
+                        case SDLK_RIGHT:
+                            keycode = 0x10;
+                            break;
+                        case SDLK_z:
+                            keycode = 0x08;
+                            break;
+                        case SDLK_x:
+                            keycode = 0x04;
+                            break;
+                        case SDLK_a:
+                            keycode = 0x02;
+                            break;
+                        case SDLK_s:
+                            keycode = 0x01;
+                            break;
+                        default:
+                            break;
+                    }
+                    if (event.type == SDL_KEYDOWN) {
+                        core->key |= keycode;
+                    }
+                    else {
+                        core->key &= ~keycode;
+                    }
+                }
             }
             uint32_t ms_delta = SDL_GetTicks() - ms_tick;
             int sim_freq = sim_tick / ms_delta;
