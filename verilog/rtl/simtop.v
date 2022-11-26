@@ -42,7 +42,7 @@ module simtop(
 
     chip chip(
         .clk(clk),
-        .rst(rst),
+        .rstn(!rst),
         .a(bus_a),
         .dout(bus_dout),
         .din(bus_din),
@@ -85,6 +85,15 @@ module simtop(
     assign rd = ~bus_wr; // Always enable output
 
     // Key parallel to serial
-    assign skey = 1'b0;
+    reg [7:0] key_sr;
+    always @(posedge clk) begin
+        if (hs) begin
+            key_sr <= key;
+        end
+        else if (valid) begin
+            key_sr <= {key_sr[6:0], 1'b0};
+        end
+    end
+    assign skey = key_sr[7];
 
 endmodule

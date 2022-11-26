@@ -17,7 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 module chip(
     input wire clk, // 4 MHz clock input
-    input wire rst, // Active high sync reset
+    input wire rstn, // Active high sync reset
     output reg [15:0] a, // Address bus
     output reg [7:0] dout, // Data bus to be written
     input wire [7:0] din, // Data bus read
@@ -37,12 +37,14 @@ module chip(
     output wire done,
     output wire fault
 );
+    wire rst = !rstn;
     wire [1:0] ct;
     wire [15:0] cpu_a;
     wire [7:0] cpu_dout;
     reg [7:0] cpu_din;
     wire cpu_wr;
     wire cpu_rd;
+    reg [7:0] key;
     wire [15:0] ppu_a;
     wire [7:0] ppu_dout;
     reg [7:0] ppu_din;
@@ -63,7 +65,7 @@ module chip(
         .wr(cpu_wr), // Write Enable
         .rd(cpu_rd), // Read Enable
         // Keyboard input
-        .key(8'b0),
+        .key(key),
         // LCD output
         .hs(hsync), // Horizontal Sync Output
         .vs(vsync), // Vertical Sync Output
@@ -144,6 +146,42 @@ module chip(
         end
     end
 
+    // Audio PDM
+    sdm1b #(.W(9)) sdm_left (
+        .clk_fast(clk),
+        .rst_n(rstn),
+        .din(left[14:6]),
+        .error(),
+        .dout(audiol)
+    );
+
+    sdm1b #(.W(9)) sdm_right (
+        .clk_fast(clk),
+        .rst_n(rstn),
+        .din(right[14:6]),
+        .error(),
+        .dout(audior)
+    );
+
+    // Key serial to parallel
+    reg [7:0] key_sr;
+    reg [3:0] counter;
+    always @(posedge clk) begin
+        if (hsync) begin
+            counter <= 4'b0;
+        end
+        else begin
+            if (pvalid) begin
+                if (counter != 4'd8) begin
+                    key_sr <= {key_sr[6:0], skey};
+                    counter <= counter + 1;
+                end
+                else begin
+                    key <= key_sr;
+                end
+            end
+        end
+    end
 
 endmodule
 `default_nettype wire
