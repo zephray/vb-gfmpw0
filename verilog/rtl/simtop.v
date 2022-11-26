@@ -26,6 +26,9 @@ module simtop(
     output wire vs,
     output wire [1:0] pixel,
     output wire valid,
+    // Audio output
+    output wire audiol,
+    output wire audior,
     // For testbench only
     output wire done,
     output wire fault
@@ -55,8 +58,8 @@ module simtop(
         .pvalid(valid),
         .pixel(pixel),
         .skey(skey),
-        .audiol(),
-        .audior(),
+        .audiol(audiol),
+        .audior(audior),
         .mode(1'b0),
         .done(done),
         .fault(fault)
