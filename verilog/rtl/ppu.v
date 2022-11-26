@@ -53,18 +53,13 @@
 module ppu(
     input clk,
     input rst,
+    input wire [1:0] ct,
     // MMIO Bus, 0xFF40 - 0xFF4B, always visible to CPU
     input wire [15:0] mmio_a,
     output reg [7:0]  mmio_dout,
     input wire [7:0]  mmio_din,
     input wire        mmio_rd,
     input wire        mmio_wr,
-    // VRAM Bus, 0x8000 - 0x9FFF
-    input wire [15:0] vram_a,
-    output wire [7:0] vram_dout,
-    input wire [7:0]  vram_din,
-    input wire        vram_rd,
-    input wire        vram_wr,
     // OAM Bus,  0xFE00 - 0xFE9F
     input wire [15:0] oam_a,
     output wire [7:0] oam_dout,
@@ -82,6 +77,12 @@ module ppu(
     output reg valid, // Pixel Valid
     output reg hs, // Horizontal Sync, High Valid
     output reg vs, // Vertical Sync, High Valid
+    // Video RAM interface
+    output wire [12:0] vram_a,
+    output wire vram_wr,
+    output wire vram_rd,
+    output wire [7:0] vram_din,
+    input wire [7:0] vram_dout,
     //Debug output
     output [7:0] scx,
     output [7:0] scy,
@@ -140,11 +141,7 @@ module ppu(
     wire vram_addr_int_sel; // 0 - BG, 1 - OBJ
     
     assign vram_addr_int = (vram_addr_int_sel == 1'b1) ? (vram_addr_obj) : (vram_addr_bg);
-    
-    wire vram_access_ext = ((reg_mode == PPU_MODE_H_BLANK)||
-                            (reg_mode == PPU_MODE_V_BLANK)||
-                            (reg_mode == PPU_MODE_OAM_SEARCH));
-    wire vram_access_int = ~vram_access_ext;
+
     wire oam_access_ext = ((reg_mode == PPU_MODE_H_BLANK)||
                            (reg_mode == PPU_MODE_V_BLANK));
     
@@ -187,25 +184,12 @@ module ppu(
     assign oam_dout = (oam_access_ext) ? (oam_data_out_byte) : (8'hFF);
 
     // 8 bit WR, 8 bit RD, 8KB VRAM
-    wire        vram_we;
-    wire [12:0] vram_addr;
-    wire [7:0]  vram_data_in;
     wire [7:0]  vram_data_out;
-    
-    singleport_ram #(
-        .WORDS(8192)
-    ) br_vram (
-        .clka(~clk),
-        .wea(vram_we),
-        .addra(vram_addr[12:0]),
-        .dina(vram_data_in),
-        .douta(vram_data_out));
-        
-    assign vram_addr_ext = vram_a[12:0];
-    assign vram_addr = (vram_access_ext) ? (vram_addr_ext) : (vram_addr_int);
-    assign vram_data_in = vram_din;
-    assign vram_we = (vram_wr)&(vram_access_ext);
-    assign vram_dout = (vram_access_ext) ? (vram_data_out) : (8'hFF);
+
+    assign vram_a = vram_addr_int;
+    assign vram_wr = 1'b0; // PPU doesn't write to VRAM
+    assign vram_din = 8'd0;
+    assign vram_data_out = vram_dout;
     
     // Pixel Pipeline
     
@@ -450,7 +434,8 @@ module ppu(
     assign vram_addr_int_sel = 
         ((r_state == S_OAMRDB) || (r_state == S_OFRD0A) || (r_state == S_OFRD0B)
             || (r_state == S_OFRD1A) || (r_state == S_OFRD1B)) ? 1'b1 : 1'b0;
-        
+    assign vram_rd = (r_state == S_FTIDB) || (r_state == S_FRD0B) ||
+        (r_state == S_FRD1B) || (r_state == S_OFRD0B) || (r_state == S_OFRD1B);    
     
     // Current mode logic, based on current state
     always @ (posedge clk)
@@ -712,6 +697,8 @@ module ppu(
             end
         end
     end
+
+    wire ram_ready = ((ct == 2'b00) || (ct == 2'b10));
     
     // Next State Logic
     // Since new state get updated during posedge
@@ -733,20 +720,20 @@ module ppu(
                 ) : (S_IDLE);
             S_OAMX: r_next_state = (reg_lcd_en) ? (S_OAMY) : (S_IDLE);
             S_OAMY: r_next_state = (reg_lcd_en) ? ((oam_search_count == (PPU_OAM_SEARCH_LENGTH - 1'b1)) ? (S_FTIDA) : (S_OAMX)) : (S_IDLE);
-            S_FTIDA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FTIDB))) : (S_IDLE);
+            S_FTIDA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FTIDB : S_FTIDA))) : (S_IDLE);
             S_FTIDB: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD0A))) : (S_IDLE);
-            S_FRD0A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD0B))) : (S_IDLE);
+            S_FRD0A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FRD0B : S_FRD0A))) : (S_IDLE);
             S_FRD0B: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD1A))) : (S_IDLE);
-            S_FRD1A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD1B))) : (S_IDLE);
+            S_FRD1A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FRD1B : S_FRD1A))) : (S_IDLE);
             S_FRD1B: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : ((pf_empty != PF_FULL) ? (S_FTIDA) : (S_FWAITA)))) : (S_IDLE); // If fifo not full, no wait state is needed
             S_FWAITA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FWAITB))) : (S_IDLE);
             S_FWAITB: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FTIDA))) : (S_IDLE);
             S_SWW: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : (S_FTIDA)) : (S_IDLE);
             S_OAMRDA: r_next_state = (reg_lcd_en) ? (S_OAMRDB) : (S_IDLE);
             S_OAMRDB: r_next_state = (reg_lcd_en) ? (S_OFRD0A) : (S_IDLE);
-            S_OFRD0A: r_next_state = (reg_lcd_en) ? (S_OFRD0B) : (S_IDLE);
+            S_OFRD0A: r_next_state = (reg_lcd_en) ? (ram_ready ? S_OFRD0B : S_OFRD0A) : (S_IDLE);
             S_OFRD0B: r_next_state = (reg_lcd_en) ? (S_OFRD1A) : (S_IDLE);
-            S_OFRD1A: r_next_state = (reg_lcd_en) ? (S_OFRD1B) : (S_IDLE);
+            S_OFRD1A: r_next_state = (reg_lcd_en) ? (ram_ready ? S_OFRD1B : S_OFRD1A) : (S_IDLE);
             S_OFRD1B: r_next_state = (reg_lcd_en) ? (S_OWB) : (S_IDLE);
             S_OWB: r_next_state = (reg_lcd_en) ? (r_next_backup) : (S_IDLE);
             default: r_next_state = S_IDLE;

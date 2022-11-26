@@ -31,7 +31,7 @@
 
 #include "verilated.h"
 #include "verilated_vcd_c.h"
-#include "Vboy.h"
+#include "Vsimtop.h"
 
 #include "memsim.h"
 #include "mbcsim.h"
@@ -46,11 +46,11 @@
 #define CON_BASE 0x20000000
 
 // Verilator related
-Vboy *core;
+Vsimtop *core;
 VerilatedVcdC *trace;
 
 #define CONCAT(a,b) a##b
-#define SIGNAL(x) CONCAT(core->boy__DOT__,x)
+#define SIGNAL(x) CONCAT(core->simtop__DOT__chip__DOT__boy__DOT__,x)
 
 // this only applies to quiet mode.
 const uint64_t CYCLE_LIMIT = 32768;
@@ -141,7 +141,7 @@ void tick() {
             (SIGNAL(cpu__DOT__next == 0))) {
             // Instruction just finished executing
             fprintf(it, "Time %ld\nPC = %04x, F = %c%c%c%c, A = %02x, SP = %02x%02x\nB = %02x, C = %02x, D = %02x, E = %02x, H = %02x, L = %02x\n",
-                10 * tickcount,
+                10 * (tickcount - 1), // Make timing compatible with old traces
                 SIGNAL(cpu__DOT__pc),
                 ((SIGNAL(cpu__DOT__flags)) & 0x8) ? 'Z' : '-',
                 ((SIGNAL(cpu__DOT__flags)) & 0x4) ? 'N' : '-',
@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
     // Initialize testbench
     Verilated::commandArgs(argc, argv);
 
-    core = new Vboy;
+    core = new Vsimtop;
     Verilated::traceEverOn(true);
 
     if (argc < 2) {
@@ -231,8 +231,8 @@ int main(int argc, char *argv[]) {
         mbc = new MBCSIM();
     }
     else {
-        cartrom = new MEMSIM(0x0000, 32768, 0);
-        cartram = new MEMSIM(0xa000, 8192, 0);
+        cartrom = new MEMSIM(0x0000, 32768);
+        cartram = new MEMSIM(0xa000, 8192);
     }
 
     if (!quiet) {

@@ -26,18 +26,13 @@
 
 class MEMSIM {
 public:
-    MEMSIM(uint16_t base, size_t len, size_t delay);
+    MEMSIM(uint16_t base, size_t len);
     ~MEMSIM(void);
     void load(char *fname);
-    void apply(uint8_t wr_data, uint16_t address, uint8_t wr_enable,
-            uint8_t rd_enable, uint8_t &rd_data);
+    void apply(uint8_t wr_data, uint16_t address, uint8_t wr,
+            uint8_t rd, uint8_t &rd_data);
 private:
     uint16_t base;
     uint8_t *mem;
     uint16_t len;
-    int delay;
-    int delay_count;
-    uint8_t last_wr;
-    uint8_t last_rd;
-    uint8_t last_data;
 };

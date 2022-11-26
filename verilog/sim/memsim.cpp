@@ -2,7 +2,7 @@
 // VerilogBoy simulator
 // Copyright 2022 Wenting Zhang
 //
-// memsim.cpp: A memory simulation model with simple delay control
+// memsim.cpp: An async memory simulation model
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,15 +29,10 @@
 #include <assert.h>
 #include "memsim.h"
 
-MEMSIM::MEMSIM(uint16_t base, size_t len, size_t delay) {
+MEMSIM::MEMSIM(uint16_t base, size_t len) {
     this->base = base;
     this->len = len;
-    this->delay = delay;
     mem = (uint8_t *)malloc(len);
-    delay_count = 0;
-    last_wr = 0;
-    last_rd = 0;
-    last_data = 0;
 }
 
 MEMSIM::~MEMSIM(void) {
@@ -58,35 +53,25 @@ void MEMSIM::load(char *fname) {
 }
 
 void MEMSIM::apply(uint8_t wr_data, uint16_t address, 
-    uint8_t wr_enable, uint8_t rd_enable, uint8_t &rd_data) {
+    uint8_t wr, uint8_t rd, uint8_t &rd_data) {
 
-    if (delay_count == 0) {
-        if ((address >= base) && (address < (base + len))) {
-            if (last_wr && !wr_enable) {
-                mem[address - base] = last_data;
-                delay_count = delay;
+    if ((address >= base) && (address < (base + len))) {
+        if (wr) {
+            mem[address - base] = wr_data;
 #ifdef __DEBUG
-            printf("MEMBUS W[%04x] = %02x\n",
-                address,
-                last_data);
+        printf("MEMBUS W[%04x] = %02x\n",
+            address,
+            wr_data);
 #endif
-            } 
-            else if (!last_rd && rd_enable) {
-                rd_data = mem[address - base];
-                delay_count = delay;
-#ifdef __DEBUG
-            printf("MEMBUS R[%04x] = %02x\n",
-                address,
-                rd_data);
-#endif
-            }
         } 
-        last_rd = rd_enable;
-        last_wr = wr_enable;
-        last_data = wr_data;
-    } 
-    else {
-        delay_count --;
+        else if (rd) {
+            rd_data = mem[address - base];
+#ifdef __DEBUG
+        printf("MEMBUS R[%04x] = %02x\n",
+            address,
+            rd_data);
+#endif
+        }
     }
 }
 

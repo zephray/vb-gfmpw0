@@ -25,6 +25,7 @@ module dma(
     input  wire        clk,
     //input  wire        phi,
     input  wire        rst,
+    input  wire [1:0]  ct,
     output reg         dma_rd,
     output reg         dma_wr,
     //output wire        dma_rd_comb,
@@ -35,9 +36,7 @@ module dma(
     input  wire        mmio_wr,
     input  wire [7:0]  mmio_din,
     output wire [7:0]  mmio_dout,
-    output wire        dma_occupy_extbus,
-    output wire        dma_occupy_vidbus,
-    output wire        dma_occupy_oambus
+    output wire        dma_occupy_bus
     );
 
     // DMA data blocks /////////////////////////////////////////////////////////
@@ -49,11 +48,7 @@ module dma(
 
     reg cpu_mem_disable;
 
-    assign dma_occupy_extbus = cpu_mem_disable & 
-            ((dma_start_addr <= 8'h7f) || (dma_start_addr >= 8'ha0));
-    assign dma_occupy_vidbus = cpu_mem_disable &
-            ((dma_start_addr >= 8'h80) && (dma_start_addr <= 8'h9f));
-    assign dma_occupy_oambus = cpu_mem_disable;
+    assign dma_occupy_bus = cpu_mem_disable;
 
    // DMA transfer logic //////////////////////////////////////////////////////
    
@@ -95,16 +90,11 @@ module dma(
                 if (mmio_wr) begin
                     // Transfer starts on next cycle
                     state <= DMA_DELAY;
-                    count <= 8'd3; // Delay before start
                 end
-                else
-                    count <= 8'd0;
+                count <= 8'd0;
             end
             DMA_DELAY: begin
-                if (count != 8'd0) begin
-                    count <= count - 1;
-                end
-                else begin
+                if (ct == 2'b11) begin
                     state <= DMA_TRANSFER_READ_ADDR;
                 end
             end
@@ -116,7 +106,7 @@ module dma(
                 dma_rd <= 1'b1;
                 if (mmio_wr) begin // Allow re-triggering
                     state <= DMA_DELAY;
-                    count <= 8'd3; // Delay before start
+                    count <= 8'd0;
                 end
                 else
                     state <= DMA_TRANSFER_READ_DATA;
@@ -134,7 +124,7 @@ module dma(
                 dma_wr <= 1'b1;
                 if (mmio_wr) begin // Allow re-triggering
                     state <= DMA_DELAY;
-                    count <= 8'd3; // Delay before start
+                    count <= 8'd0;
                 end
                 else
                     state <= DMA_TRANSFER_WRITE_WAIT;
@@ -143,7 +133,7 @@ module dma(
                 // Wait
                 if (mmio_wr) begin // Allow re-triggering
                     state <= DMA_DELAY;
-                    count <= 8'd3; // Delay before start
+                    count <= 8'd0; // Delay before start
                 end
                 else
                 if (count == 8'h9f) begin

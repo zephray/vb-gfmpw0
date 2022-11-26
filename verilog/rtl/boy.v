@@ -21,7 +21,8 @@ module boy(
     input wire rst, // Async Reset Input
     input wire clk, // 4.19MHz Clock Input
     output wire phi, // 1.05MHz Reference Clock Output
-    // Cartridge interface
+    output wire [1:0] ct, // 0-3T cycle number
+    // CPU/ DMA bus interface
     output wire [15:0] a, // Address Bus
     output wire [7:0] dout,  // Data Bus
     input wire [7:0] din,
@@ -38,6 +39,12 @@ module boy(
     // Sound output
     output reg [15:0] left,
     output reg [15:0] right,
+    // PPU bus interface
+    output wire [12:0] ppu_a,
+    output wire ppu_wr,
+    output wire ppu_rd,
+    output wire [7:0] ppu_dout,
+    input wire [7:0] ppu_din,
     // Debug interface
     output wire done,
     output wire fault
@@ -49,17 +56,18 @@ module boy(
     reg  [7:0]  cpu_din;           // CPU Data Bus, to CPU
     wire [7:0]  cpu_dout;          // CPU Data Bus, from CPU
     wire [15:0] cpu_a;             // CPU Address Bus
+    wire [15:0] cpu_a_early;       // CPU Address Unbuffered
     wire [4:0]  cpu_int_en;        // CPU Interrupt Enable input
     wire [4:0]  cpu_int_flags_in;  // CPU Interrupt Flags input
     wire [4:0]  cpu_int_flags_out; // CPU Interrupt Flags output
-    wire [1:0]  cpu_ct;            // 0-3 T cycle number inside one M cycle
     
     cpu cpu(
         .clk(clk),
         .rst(rst),
         .phi(phi),
-        .ct(cpu_ct),
+        .ct(ct),
         .a(cpu_a),
+        .a_early(cpu_a_early),
         .dout(cpu_dout),
         .din(cpu_din),
         .rd(cpu_rd),
@@ -89,16 +97,15 @@ module boy(
     wire dma_rd; // DMA Memory Write Enable
     wire dma_wr; // DMA Memory Read Enable
     wire [15:0] dma_a; // Main Address Bus
-    reg  [7:0]  dma_din; // Main Data Bus
+    wire [7:0]  dma_din; // Main Data Bus
     wire [7:0]  dma_dout;
     wire [7:0]  dma_mmio_dout;
     reg dma_mmio_wr; // actually wire
-    wire dma_occupy_extbus; // 0x0000 - 0x7FFF, 0xA000 - 0xFFFF
-    wire dma_occupy_vidbus; // 0x8000 - 0x9FFF
-    wire dma_occupy_oambus; // 0xFE00 - 0xFE9F
+    wire dma_occupy_bus;
     dma dma(
         .clk(clk),
         .rst(rst),
+        .ct(ct),
         .dma_rd(dma_rd),
         .dma_wr(dma_wr),
         .dma_a(dma_a),
@@ -107,10 +114,9 @@ module boy(
         .mmio_wr(dma_mmio_wr),
         .mmio_din(cpu_dout),
         .mmio_dout(dma_mmio_dout),
-        .dma_occupy_extbus(dma_occupy_extbus),
-        .dma_occupy_vidbus(dma_occupy_vidbus),
-        .dma_occupy_oambus(dma_occupy_oambus)
+        .dma_occupy_bus(dma_occupy_bus)
     );
+    assign dma_din = din;
 
     // Interrupt
     // int_req is the request signal from peripherals.
@@ -171,12 +177,6 @@ module boy(
     // PPU
     wire [7:0] ppu_mmio_dout;
     reg ppu_mmio_wr; // actually wire
-    wire [15:0] vram_a;
-    wire [7:0] vram_dout;
-    //wire [7:0] vram_din;
-    wire vram_rd;
-    wire vram_wr;
-    reg vram_cpu_wr;
     wire [15:0] oam_a;
     wire [7:0] oam_dout;
     wire [7:0] oam_din;
@@ -184,28 +184,20 @@ module boy(
     wire oam_wr;
     reg oam_cpu_wr;
 
-    assign vram_a = (dma_occupy_vidbus) ? (dma_a) : (cpu_a);
-    //assign vram_din = (dma_occupy_vidbus) ? (dma_dout) : (cpu_dout);
-    assign vram_rd = (dma_occupy_vidbus) ? (dma_rd) : (cpu_rd);
-    assign vram_wr = (dma_occupy_vidbus) ? (1'b0) : (vram_cpu_wr);
-    assign oam_a = (dma_occupy_oambus) ? (dma_a) : (cpu_a);
-    assign oam_din = (dma_occupy_oambus) ? (dma_dout) : (cpu_dout);
-    assign oam_rd = (dma_occupy_oambus) ? (1'b0) : (cpu_rd);
-    assign oam_wr = (dma_occupy_oambus) ? (dma_wr) : (oam_cpu_wr);
+    assign oam_a = (dma_occupy_bus) ? (dma_a) : (cpu_a);
+    assign oam_din = (dma_occupy_bus) ? (dma_dout) : (cpu_dout);
+    assign oam_rd = (dma_occupy_bus) ? (1'b0) : (cpu_rd);
+    assign oam_wr = (dma_occupy_bus) ? (dma_wr) : (oam_cpu_wr);
 
     ppu ppu(
         .clk(clk),
         .rst(rst),
+        .ct(ct),
         .mmio_a(cpu_a), // mmio bus is always accessable to CPU
         .mmio_dout(ppu_mmio_dout),
         .mmio_din(cpu_dout),
         .mmio_rd(cpu_rd),
         .mmio_wr(ppu_mmio_wr),
-        .vram_a(vram_a),
-        .vram_dout(vram_dout),
-        .vram_din(cpu_dout), // DMA never writes to VRAM
-        .vram_rd(vram_rd),
-        .vram_wr(vram_wr),
         .oam_a(oam_a),
         .oam_dout(oam_dout),
         .oam_din(oam_din),
@@ -220,6 +212,11 @@ module boy(
         .valid(valid),
         .hs(hs), // Horizontal Sync, Low Active
         .vs(vs),  // Vertical Sync, Low Active
+        .vram_a(ppu_a),
+        .vram_dout(ppu_din),
+        .vram_din(ppu_dout),
+        .vram_rd(ppu_rd),
+        .vram_wr(ppu_wr),
         // Ignore the debugging interface
         /* verilator lint_off PINCONNECTEMPTY */
         .scx(),
@@ -235,7 +232,7 @@ module boy(
     timer timer(
         .clk(clk),
         .rst(rst),
-        .ct(cpu_ct),
+        .ct(ct),
         .a(cpu_a),
         .dout(timer_dout),
         .din(cpu_dout),
@@ -308,25 +305,6 @@ module boy(
         .d(brom_dout)
     );
 
-    // Work RAM
-    wire [7:0] wram_dout;
-    wire [12:0] wram_a;
-    wire wram_wr;
-    reg wram_cpu_wr; // actually wire
-
-    assign wram_a = (dma_occupy_extbus) ? (dma_a[12:0]) : (cpu_a[12:0]);
-    assign wram_wr = (dma_occupy_extbus) ? (1'b0) : (wram_cpu_wr);
-
-    singleport_ram #(
-        .WORDS(8192)
-    ) br_wram (
-        .clka(clk),
-        .wea(wram_wr),
-        .addra(wram_a), 
-        .dina(cpu_dout), // DMA never writes to Work RAM
-        .douta(wram_dout)
-    );
-
     // Keypad
     wire [7:0] keypad_reg;
     reg keypad_reg_wr; // actually wire
@@ -345,12 +323,12 @@ module boy(
           ((keypad_high[0] == 1'b1) ? (key[3:0]) : 4'h0)); 
     assign int_key_req = (keypad_reg[3:0] != 4'hf) ? (1'b1) : (1'b0);
 
-    // External Bus
+    // External Bus (this includes CPU/DMA access to WRAM, VRAM, and cartridge)
     reg ext_cpu_wr;  // wire
-    assign a = (dma_occupy_extbus) ? (dma_a) : (cpu_a);
+    assign a = (dma_occupy_bus) ? (dma_a) : (cpu_a_early);
     assign dout = cpu_dout; // DMA never writes to external bus
-    assign wr = (dma_occupy_extbus) ? (1'b0) : (ext_cpu_wr);
-    assign rd = (dma_occupy_extbus) ? (dma_rd) : (cpu_rd);
+    assign wr = (dma_occupy_bus) ? (1'b0) : (ext_cpu_wr);
+    assign rd = (dma_occupy_bus) ? (dma_rd) : (cpu_rd);
 
     // Bus Multiplexing, CPU
     always @(*) begin
@@ -364,9 +342,7 @@ module boy(
         high_ram_wr = 1'b0;
         sound_wr = 1'b0;
         ppu_mmio_wr = 1'b0;
-        vram_cpu_wr = 1'b0;
         oam_cpu_wr = 1'b0;
-        wram_cpu_wr = 1'b0;
         ext_cpu_wr = 1'b0;
         // -- These are exclusive to CPU --
         if (cpu_a == 16'hffff) begin  // 0xFFFF - IE
@@ -418,41 +394,13 @@ module boy(
             cpu_din = brom_dout;
         end 
         // -- These are shared between CPU and DMA --
-        else if (cpu_a >= 16'h8000 && cpu_a <= 16'h9fff) begin // VRAM
-            vram_cpu_wr = cpu_wr;
-            cpu_din = (dma_occupy_vidbus) ? (8'hff) : (vram_dout);
-        end
-        else if (cpu_a >= 16'hfe00 && cpu_a <= 16'hfe9f) begin // OAM
-            oam_cpu_wr = cpu_wr;
-            cpu_din = (dma_occupy_oambus) ? (8'hff) : (oam_dout);
-        end
-        else if ((cpu_a >= 16'hc000 && cpu_a <= 16'hdfff) ||
-                 (cpu_a >= 16'he000 && cpu_a <= 16'hfdff)) begin // WRAM
-            wram_cpu_wr = cpu_wr;
-            cpu_din = (dma_occupy_extbus) ? (8'hff) : (wram_dout);
-        end
-        else if ((cpu_a <= 16'h7fff) ||
-                 (cpu_a >= 16'ha000 && cpu_a <= 16'hbfff)) begin // External
+        else if (cpu_a <= 16'hfdff) begin // External/ Work RAM/ Video RAM
             ext_cpu_wr = cpu_wr;
-            cpu_din = (dma_occupy_extbus) ? (8'hff) : (din);
+            cpu_din = (dma_occupy_bus) ? (8'hff) : (din);
         end
         else begin
             // Unmapped area
             cpu_din = 8'hff;
-        end
-    end
-
-    // Bus Multiplexing, DMA
-    always @(*) begin
-        if (dma_a >= 16'h8000 && dma_a <= 16'h9fff) begin // VRAM
-            dma_din = vram_dout;
-        end
-        else if ((dma_a >= 16'hc000 && dma_a <= 16'hdfff) ||
-                 (dma_a >= 16'he000 && dma_a <= 16'hfdff)) begin // WRAM
-            dma_din = wram_dout;
-        end
-        else begin
-            dma_din = din;
         end
     end
 

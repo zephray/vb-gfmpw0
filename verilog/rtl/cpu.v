@@ -21,6 +21,7 @@ module cpu(
     output reg phi,
     output wire [1:0] ct,
     output reg [15:0] a,
+    output wire [15:0] a_early,
     output reg [7:0] dout,
     input [7:0] din,
     output reg rd,
@@ -454,6 +455,12 @@ module cpu(
             end
             2'b01: begin
                 // Read in progress
+                if (bus_op == 2'b10) begin
+                    // Write cycle
+                    wr <= 1;
+                    dout <= db_wr;
+                end
+                // Otherwise wait for next cycle for read
             end
             2'b10: begin
                 if (bus_op == 2'b10) begin
@@ -500,6 +507,8 @@ module cpu(
             endcase
         end
     end
+
+    assign a_early = ab_wr; // For external latching
 
     // CT - FSM / Instruction Execution
     reg  [1:0] alu_src_a_ct;

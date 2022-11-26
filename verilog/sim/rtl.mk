@@ -1,4 +1,4 @@
-TARGET ?= boy
+TARGET ?= simtop
 all: $(TARGET)
 
 VOBJ := obj_dir
