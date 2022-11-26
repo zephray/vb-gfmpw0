@@ -36,10 +36,13 @@ CSRCS +=
 
 CPPSRCS += \
 	./main.cpp \
+	./audiosim.cpp \
+	./cic.cpp \
 	./dispsim.cpp \
 	./mbcsim.cpp \
 	./memsim.cpp \
 	./mmrprobe.cpp \
+	./waveheader.cpp \
 	verilated.cpp \
 	verilated_vcd_c.cpp
 

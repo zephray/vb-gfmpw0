@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <time.h>
+#include <vector>
 
 #include <SDL.h>
 
@@ -37,6 +38,8 @@
 #include "mbcsim.h"
 #include "dispsim.h"
 #include "mmrprobe.h"
+#include "cic.h"
+#include "audiosim.h"
 
 #define CLK_PERIOD_PS 250000
 
@@ -62,6 +65,7 @@ static bool noboot = false;
 static bool nostop = false;
 static bool itrace = false;
 static bool usembc = false;
+static bool enable_audio = false;
 static unsigned short breakpoint = 0xff7f;
 static char result_file[127];
 
@@ -71,6 +75,7 @@ MEMSIM *cartram;
 MBCSIM *mbc;
 DISPSIM *dispsim;
 MMRPROBE *mmrprobe;
+AUDIOSIM *audiosim;
 FILE *it;
 
 // State
@@ -113,6 +118,15 @@ void tick() {
             core->hs,
             core->vs,
             core->valid);
+    }
+
+    if (enable_audio) {
+        audiosim->apply(
+            core->audiol,
+            core->audior);
+        audiosim->bypass(
+            core->simtop__DOT__chip__DOT__left,
+            core->simtop__DOT__chip__DOT__right);
     }
 
     if (verbose) {
@@ -219,6 +233,10 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "--mbc") == 0) {
             usembc = true;
         }
+        // Enable audio capture
+        if (strcmp(argv[i], "--audio") == 0) {
+            enable_audio = true;
+        }
     }
 
     if (enable_trace) {
@@ -253,6 +271,10 @@ int main(int argc, char *argv[]) {
         mbc->load(argv[1]);
     else
         cartrom->load(argv[1]);
+
+    if (enable_audio) {
+        audiosim = new AUDIOSIM();
+    }
 
     // Start simulation
     if (verbose)
@@ -405,6 +427,10 @@ int main(int argc, char *argv[]) {
     else {
         delete cartrom;
         delete cartram;
+    }
+    if (enable_audio) {
+        audiosim->save("audio.wav");
+        delete audiosim;
     }
 
     return 0;
