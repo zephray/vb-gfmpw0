@@ -287,7 +287,8 @@ module ppu(
     localparam S_OFRD0B   = 5'd16; // Object Fetch Read Data 0 Stage B
     localparam S_OFRD1A   = 5'd17; // Object Fetch Read Data 1 Stage A
     localparam S_OFRD1B   = 5'd18; // Object Fetch Read Data 1 Stage B
-    localparam S_OWB      = 5'd19; // Object Write Back
+    localparam S_OWAIT    = 5'd19; // Object Wait
+    localparam S_OWB      = 5'd20; // Object Write Back
     
     localparam PPU_OAM_SEARCH_LENGTH = 6'd40;
 
@@ -434,8 +435,8 @@ module ppu(
     assign vram_addr_int_sel = 
         ((r_state == S_OAMRDB) || (r_state == S_OFRD0A) || (r_state == S_OFRD0B)
             || (r_state == S_OFRD1A) || (r_state == S_OFRD1B)) ? 1'b1 : 1'b0;
-    assign vram_rd = (r_state == S_FTIDB) || (r_state == S_FRD0B) ||
-        (r_state == S_FRD1B) || (r_state == S_OFRD0B) || (r_state == S_OFRD1B);    
+    assign vram_rd = (r_state == S_FTIDA) || (r_state == S_FRD0A) ||
+        (r_state == S_FRD1A) || (r_state == S_OFRD0A) || (r_state == S_OFRD1A);
     
     // Current mode logic, based on current state
     always @ (posedge clk)
@@ -464,6 +465,7 @@ module ppu(
             S_OFRD0B: reg_stat[1:0] <= PPU_MODE_PIX_TRANS;
             S_OFRD1A: reg_stat[1:0] <= PPU_MODE_PIX_TRANS;
             S_OFRD1B: reg_stat[1:0] <= PPU_MODE_PIX_TRANS;
+            S_OWAIT: reg_stat[1:0] <= PPU_MODE_PIX_TRANS;
             S_OWB: reg_stat[1:0] <= PPU_MODE_PIX_TRANS;
             default: reg_stat[1:0] <= PPU_MODE_V_BLANK;
             endcase
@@ -549,6 +551,7 @@ module ppu(
                 else
                     current_obj_tile_data_1 <= vram_data_out;
             // nothing to do for S_OWB
+            S_OWAIT: begin end
             S_OWB: begin end
             default: begin
                 $display("Invalid state!");
@@ -655,6 +658,13 @@ module ppu(
         end
     end
 
+    wire ram_ready = ((ct == 2'b00) || (ct == 2'b10));
+    wire ppu_ram_stall = !ram_ready && vram_rd;
+    wire need_prewait = (r_state == S_FTIDA) || (r_state == S_FRD0A) ||
+        (r_state == S_FRD1A) || (r_state == S_OFRD0A) || (r_state == S_OFRD1A) ||
+        (r_state == S_FWAITA);
+    reg postwait;
+
     // Enter Next State
     // and handle object interrupt
     // (sorry but I need to backup next state so I could not handle these in the next state logic)
@@ -671,25 +681,37 @@ module ppu(
             if (obj_trigger && (reg_mode == PPU_MODE_PIX_TRANS)) begin
                 // If already in object rendering stages
                 if ((r_state == S_OFRD0A)||(r_state == S_OFRD0B)||
-                    (r_state == S_OFRD1A)||(r_state == S_OFRD1B)||
+                    (r_state == S_OFRD1A)||(r_state == S_OFRD1B)||(r_state == S_OWAIT)||
                     (r_state == S_OAMRDA)||(r_state == S_OAMRDB)) begin
                     r_state <= r_next_state;
                 end 
                 // Finished one object, but there is more
                 else if (r_state == S_OWB) begin
-                    r_state <= S_OAMRDA;
+                    if (postwait)
+                        r_state <= S_OAMRDA;
+                    else
+                        r_state <= S_OWAIT;
                     obj_trigger_id <= obj_trigger_id_next;
                 end
                 // Not rendering object before, start now
                 else begin
+                    if (need_prewait) begin
+                        r_state <= S_OWAIT;
+                        postwait <= 1'b0;
+                    end
+                    else begin
+                        r_state <= S_OAMRDA;
+                        postwait <= 1'b1;
+                    end
                     r_next_backup <= r_next_state;
-                    r_state <= S_OAMRDA;
+
                     obj_trigger_id <= obj_trigger_id_next;
                 end
             end
             else begin
                 //h_pix_obj <= h_pix_output + 8'd2;
-                r_state <= r_next_state;
+                //if (!ppu_ram_stall)
+                    r_state <= r_next_state;
                 // Finished one object, and there is no more currently
                 if (r_state == S_OWB) begin
                     obj_trigger_id <= OBJ_TRIGGER_NOT_FOUND;
@@ -698,8 +720,6 @@ module ppu(
         end
     end
 
-    wire ram_ready = ((ct == 2'b00) || (ct == 2'b10));
-    
     // Next State Logic
     // Since new state get updated during posedge
     always @(*)
@@ -720,26 +740,27 @@ module ppu(
                 ) : (S_IDLE);
             S_OAMX: r_next_state = (reg_lcd_en) ? (S_OAMY) : (S_IDLE);
             S_OAMY: r_next_state = (reg_lcd_en) ? ((oam_search_count == (PPU_OAM_SEARCH_LENGTH - 1'b1)) ? (S_FTIDA) : (S_OAMX)) : (S_IDLE);
-            S_FTIDA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FTIDB : S_FTIDA))) : (S_IDLE);
+            S_FTIDA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FTIDB))) : (S_IDLE);
             S_FTIDB: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD0A))) : (S_IDLE);
-            S_FRD0A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FRD0B : S_FRD0A))) : (S_IDLE);
+            S_FRD0A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD0B))) : (S_IDLE);
             S_FRD0B: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD1A))) : (S_IDLE);
-            S_FRD1A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (ram_ready ? S_FRD1B : S_FRD1A))) : (S_IDLE);
+            S_FRD1A: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FRD1B))) : (S_IDLE);
             S_FRD1B: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : ((pf_empty != PF_FULL) ? (S_FTIDA) : (S_FWAITA)))) : (S_IDLE); // If fifo not full, no wait state is needed
             S_FWAITA: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FWAITB))) : (S_IDLE);
             S_FWAITB: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : ((window_trigger) ? (S_SWW) : (S_FTIDA))) : (S_IDLE);
             S_SWW: r_next_state = (reg_lcd_en) ? ((h_pix_output == (PPU_H_OUTPUT - 1'b1)) ? (S_BLANK) : (S_FTIDA)) : (S_IDLE);
             S_OAMRDA: r_next_state = (reg_lcd_en) ? (S_OAMRDB) : (S_IDLE);
             S_OAMRDB: r_next_state = (reg_lcd_en) ? (S_OFRD0A) : (S_IDLE);
-            S_OFRD0A: r_next_state = (reg_lcd_en) ? (ram_ready ? S_OFRD0B : S_OFRD0A) : (S_IDLE);
+            S_OFRD0A: r_next_state = (reg_lcd_en) ? (S_OFRD0B) : (S_IDLE);
             S_OFRD0B: r_next_state = (reg_lcd_en) ? (S_OFRD1A) : (S_IDLE);
-            S_OFRD1A: r_next_state = (reg_lcd_en) ? (ram_ready ? S_OFRD1B : S_OFRD1A) : (S_IDLE);
-            S_OFRD1B: r_next_state = (reg_lcd_en) ? (S_OWB) : (S_IDLE);
+            S_OFRD1A: r_next_state = (reg_lcd_en) ? (S_OFRD1B) : (S_IDLE);
+            S_OFRD1B: r_next_state = (reg_lcd_en) ? (postwait ? S_OWAIT : S_OWB) : (S_IDLE);
+            S_OWAIT: r_next_state = (reg_lcd_en) ? (postwait ? S_OWB : S_OAMRDA) : (S_IDLE);
             S_OWB: r_next_state = (reg_lcd_en) ? (r_next_backup) : (S_IDLE);
             default: r_next_state = S_IDLE;
         endcase
     end
-    
+
     // Interrupt
     always @(posedge clk)
         if (rst)
