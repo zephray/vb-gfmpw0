@@ -1,12 +1,32 @@
-# Caravel User Project
+# VerilogBoy GFMPW0
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![UPRJ_CI](https://github.com/efabless/caravel_project_example/actions/workflows/user_project_ci.yml/badge.svg)](https://github.com/efabless/caravel_project_example/actions/workflows/user_project_ci.yml) [![Caravel Build](https://github.com/efabless/caravel_project_example/actions/workflows/caravel_build.yml/badge.svg)](https://github.com/efabless/caravel_project_example/actions/workflows/caravel_build.yml)
+Uses VerilogBoy design from https://github.com/zephray/VerilogBoy.
 
-| :exclamation: Important Note            |
-|-----------------------------------------|
+VerilogBoy is a GameBoy-compatible system design in synthesizable Verilog RTL. The submission for GFMPW0 includes the following components:
 
-## Please fill in your project documentation in this README.md file 
+- SM83 (GBZ80) CPU core
+- Pixel processing unit
+- Programmable sound generator
+- Timer
+- Stereo PDM audio output
 
-Refer to [README](docs/source/index.rst#section-quickstart) for a quickstart of how to use caravel_user_project
+To form a complete GB system, users need to provide the following additional components:
 
-Refer to [README](docs/source/index.rst) for this sample project documentation. 
+- Generic 16KB Async SRAM
+- Some buttons for input
+- 160x144 LCD
+- Low pass filter and audio amplifier
+- Unmodified GameBoy game cartridge
+- Small amount of glue logic
+
+The simtop.v maybe used as a reference on external components required.
+
+A Verilator-based testbench is provided in verilog/sim.
+
+## Implementation Results
+
+The implementation has 43% ultilization of a 1.5mm x 1.5 mm core area. The Fmax is around 20MHz at typical corner, 3.3V with no hold violation. The design is supposed to run up to 4MHz at 5V.
+
+## License
+
+Unless otherwise stated, HDL codes are licensed under OHDL 1.0, and software codes are licensed under MIT.
