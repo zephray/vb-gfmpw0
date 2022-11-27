@@ -157,12 +157,12 @@ module ppu(
     reg [7:0] oam_rd_addr_int;
     wire [7:0] oam_rd_addr;
     wire [7:0] oam_wr_addr;
-    reg [15:0] oam_data_out;
+    wire [15:0] oam_data_out;
     wire [7:0] oam_data_out_byte;
     wire [7:0] oam_data_in;
     wire oam_we;
     
-    always @ (negedge clk)
+    always @ (posedge clk)
     begin
         if (oam_we) begin
             if (oam_wr_addr[0])
@@ -170,10 +170,8 @@ module ppu(
             else
                 oam_l[oam_wr_addr[7:1]] <= oam_data_in;
         end
-        else begin
-            oam_data_out <= {oam_u[oam_rd_addr[7:1]], oam_l[oam_rd_addr[7:1]]};
-        end
     end
+    assign oam_data_out = {oam_u[oam_rd_addr[7:1]], oam_l[oam_rd_addr[7:1]]};
     
     assign oam_wr_addr = oam_a[7:0];
     assign oam_rd_addr = (oam_access_ext) ? (oam_a[7:0]) : (oam_rd_addr_int); 

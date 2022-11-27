@@ -30,7 +30,8 @@ module sdm1b #(
     parameter integer ADD_NOISE = 1
 ) (
     input          clk_fast,
-    input          rst_n,
+    input          rst,
+    input          enable,
     input  [W-1:0] din,
     output [W-1:0] error,
     output         dout
@@ -44,19 +45,21 @@ module sdm1b #(
         .STYLE     ("AUTO")
     ) u_LFSR(
         .clk     (clk_fast),
-        .rst_n   (rst_n),
-        .enable  (1'b1),
+        .rst     (rst),
+        .enable  (enable),
         .data_out(lfsr_bit)
     );
     reg [W:0] acc_r = 0;
     assign dout  = acc_r[W];
     assign error = acc_r[W-1:0];
-    always @(posedge clk_fast or negedge rst_n) begin
-        if (~rst_n) begin
+    always @(posedge clk_fast) begin
+        if (rst) begin
             acc_r <= 0;
         end else begin
-            if(ADD_NOISE) acc_r <= din + error ^ lfsr_bit[0];
-            else          acc_r <= din + error;
+            if (enable) begin
+                if(ADD_NOISE) acc_r <= din + error ^ lfsr_bit[0];
+                else          acc_r <= din + error;
+            end
         end
     end
 endmodule  /* sdm1b */

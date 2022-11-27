@@ -27,17 +27,17 @@ module chip(
     output reg cs, // Cartridge chip select
     output wire hsync, // LCD horizontal sync
     output wire vsync, // LCD vertical sync
+    output wire csync, // LCD composite sync
     output wire pvalid, // LCD pixel valid/ clock gate
     output wire [1:0] pixel, // LCD pixel output
     input wire skey, // Serial key input
-    output wire audiol, // Audio left output
-    output wire audior, // Audio right output
-    input wire mode, // Test mode
+    output wire audiolr, // Audio left/right output
     // For testbench only
     output wire done,
     output wire fault
 );
     wire rst = !rstn;
+
     wire [1:0] ct;
     wire [15:0] cpu_a;
     wire [7:0] cpu_dout;
@@ -86,6 +86,7 @@ module chip(
         .fault(fault)
     );
 
+    assign csync = hsync ^ vsync;
     assign ppu_a[15:13] = 3'b100;
 
     // Internal SRAM (WRAM + VRAM, 16KB)
@@ -147,9 +148,23 @@ module chip(
     end
 
     // Audio PDM
+    reg lrck;
+    always @(posedge clk) begin
+        if (rst) begin
+            lrck <= 1'b0;
+        end
+        else begin
+            lrck <= ~lrck;
+        end
+    end
+
+    wire audiol;
+    wire audior;
+
     sdm1b #(.W(9)) sdm_left (
         .clk_fast(clk),
-        .rst_n(rstn),
+        .rst(rst),
+        .enable(lrck),
         .din(left[14:6]),
         .error(),
         .dout(audiol)
@@ -157,17 +172,20 @@ module chip(
 
     sdm1b #(.W(9)) sdm_right (
         .clk_fast(clk),
-        .rst_n(rstn),
+        .rst(rst),
+        .enable(!lrck),
         .din(right[14:6]),
         .error(),
         .dout(audior)
     );
 
+    assign audiolr = (lrck) ? (audiol) : (audior);
+
     // Key serial to parallel
     reg [7:0] key_sr;
     reg [3:0] counter;
     always @(posedge clk) begin
-        if (hsync) begin
+        if (csync) begin
             counter <= 4'b0;
         end
         else begin

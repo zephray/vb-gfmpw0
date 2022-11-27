@@ -27,8 +27,8 @@ module simtop(
     output wire [1:0] pixel,
     output wire valid,
     // Audio output
-    output wire audiol,
-    output wire audior,
+    output reg audiol,
+    output reg audior,
     // For testbench only
     output wire done,
     output wire fault
@@ -41,7 +41,9 @@ module simtop(
     wire bus_wr;
     wire bus_cale;
     wire bus_cs;
+    wire csync;
     wire skey;
+    wire audiolr;
 
     chip chip(
         .clk(clk),
@@ -51,19 +53,29 @@ module simtop(
         .din(bus_din),
         .doe(bus_doe),
         .wr(bus_wr),
-        .cale(bus_cale),
-        .cs(bus_cs),
         .hsync(hs),
         .vsync(vs),
+        .csync(csync),
         .pvalid(valid),
         .pixel(pixel),
         .skey(skey),
-        .audiol(audiol),
-        .audior(audior),
-        .mode(1'b0),
+        .audiolr(audiolr),
         .done(done),
         .fault(fault)
     );
+
+    reg [1:0] ct;
+    always @(posedge clk) begin
+        if (rst) begin
+            ct <= 2'd0;
+        end
+        else begin
+            ct <= ct + 1;
+        end
+    end
+
+    assign bus_cale = ct == 2'b00;
+    assign bus_cs = (ct == 2'b10) && (!bus_a[15] || (bus_a[15:13] == 3'b101));
 
     wire sram_we;
     wire [7:0] sram_dout;
@@ -90,7 +102,7 @@ module simtop(
     // Key parallel to serial
     reg [7:0] key_sr;
     always @(posedge clk) begin
-        if (hs) begin
+        if (csync) begin
             key_sr <= key;
         end
         else if (valid) begin
@@ -98,5 +110,21 @@ module simtop(
         end
     end
     assign skey = key_sr[7];
+
+    reg lrck;
+    always @(posedge clk) begin
+        if (rst) begin
+            lrck <= 1'b0;
+        end
+        else begin
+            lrck <= ~lrck;
+            if (lrck) begin
+                audiol <= audiolr;
+            end
+            else begin
+                audior <= audiolr;
+            end
+        end
+    end
 
 endmodule

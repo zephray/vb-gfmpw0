@@ -43,7 +43,7 @@ module lfsr_prbs_gen #(
     parameter STYLE = "AUTO"
 ) (
     input  wire                  clk,
-    input  wire                  rst_n,
+    input  wire                  rst,
     input  wire                  enable,
     output wire [DATA_WIDTH-1:0] data_out
 );
@@ -154,14 +154,14 @@ PRBS31      Fibonacci, inverted     31      31'h10000001    any
 
     always @* begin
         if (INVERT) begin
-            output_reg <= ~lfsr_data;
+            output_reg = ~lfsr_data;
         end else begin
-            output_reg <= lfsr_data;
+            output_reg = lfsr_data;
         end
     end
 
-    always @(posedge clk or negedge rst_n) begin
-        if (~rst_n) begin
+    always @(posedge clk) begin
+        if (rst) begin
             state_reg <= LFSR_INIT;
         end else begin
             if (enable) begin
