@@ -32,6 +32,7 @@
 
 #include "verilated.h"
 #include "verilated_vcd_c.h"
+#include "Vsimtop___024root.h"
 #include "Vsimtop.h"
 
 #include "memsim.h"
@@ -53,7 +54,7 @@ Vsimtop *core;
 VerilatedVcdC *trace;
 
 #define CONCAT(a,b) a##b
-#define SIGNAL(x) CONCAT(core->simtop__DOT__chip__DOT__boy__DOT__,x)
+#define SIGNAL(x) CONCAT(core->rootp->simtop__DOT__chip__DOT__boy__DOT__,x)
 
 // this only applies to quiet mode.
 const uint64_t CYCLE_LIMIT = 32768;
@@ -125,8 +126,8 @@ void tick() {
             core->audiol,
             core->audior);
         audiosim->bypass(
-            core->simtop__DOT__chip__DOT__left,
-            core->simtop__DOT__chip__DOT__right);
+            core->rootp->simtop__DOT__chip__DOT__left,
+            core->rootp->simtop__DOT__chip__DOT__right);
     }
 
     if (verbose) {
@@ -283,7 +284,7 @@ int main(int argc, char *argv[]) {
     reset();
 
     uint32_t sim_tick = 0;
-    uint32_t ms_tick = SDL_GetTicks();
+    clock_t last_clock = clock();
     char window_title[63];
     bool running = true;
     while (running) {
@@ -356,12 +357,12 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            uint32_t ms_delta = SDL_GetTicks() - ms_tick;
-            int sim_freq = sim_tick / ms_delta;
+            uint32_t ns_delta = (clock() - last_clock) / (CLOCKS_PER_SEC / 1000000);
+            int sim_freq = sim_tick * 1000 / ns_delta;
             sim_tick = 0;
             sprintf(window_title, "VerilogBoy Sim (%d kHz)", sim_freq);
             dispsim->set_title(window_title);
-            ms_tick = SDL_GetTicks();
+            last_clock = clock();
         }
     }
 

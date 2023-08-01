@@ -44,7 +44,8 @@ CPPSRCS += \
 	./mmrprobe.cpp \
 	./waveheader.cpp \
 	verilated.cpp \
-	verilated_vcd_c.cpp
+	verilated_vcd_c.cpp \
+	verilated_threads.cpp
 
 OBJS :=	$(CSRCS:%.c=$(OBJODIR)/%.o) \
 		$(CPPSRCS:%.cpp=$(OBJODIR)/%.o)
